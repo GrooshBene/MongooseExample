@@ -1,11 +1,41 @@
-var http = require('http');
 var express = require('express');
-var app = express();
-var bodyParser = require('body-parser');
-var chk = false;
-var serveStatic = require('serve-static');
 var mongoose = require('mongoose');
+var serveStatic = require('serve-static');
+var app = express();
+var server = require('http').Server(app);
+server.listen(80);
+console.log("Server Opened At Port 80");
+var io = require('socket.io')(server);
+var bodyParser = require('body-parser');
+app.use(bodyParser.urlencoded({
+  extended: true
+}));
+
+
+var cookieParser = require('cookie-parser');
+var cookie = require('cookie');
+app.use(cookieParser());
+
+var session = require('express-session');
+var sessionStore = require('sessionstore');
+store = sessionStore.createSessionStore();
+
+app.use(session({
+  store: store,
+  secret: 'grooshbene',
+  cookie: {
+    path: '/',
+    expires: false
+  }
+}));
+
+
+
+app.use(serveStatic(__dirname));
+
+
 var data_base = mongoose.connection;
+var chk = false;
 var id;
 var pw;
 mongoose.connect("mongodb://localhost:27017/db", function(err) {
@@ -13,9 +43,6 @@ mongoose.connect("mongodb://localhost:27017/db", function(err) {
     console.log("Mongoose DB ERROR!");
     throw (err);
   }
-  app.listen(80, function() {
-    console.log("Server Working On Port 80");
-  });
 });
 var schema = mongoose.Schema;
 var loginSchema = new schema({
@@ -31,11 +58,11 @@ var loginSchema = new schema({
 });
 var user = mongoose.model('user', loginSchema);
 
-app.use(bodyParser.urlencoded({
-  extended: true
-}));
-
-app.use(serveStatic(__dirname));
+io.on('connection', function(socket) {
+  socket.emit('session', {
+    user_id: "Welcome!"
+  });
+});
 
 app.get("/", function(req, res) {
   res.sendfile("index.html");
@@ -53,6 +80,14 @@ app.post("/login", function(req, res) {
       res.send("User NULLPtr");
     } else {
       console.log(a);
+      req.session.user_id = a.user_name;
+      io.on('connection', function(socket) {
+        if (req.session.user_id != null) {
+          socket.emit('session', {
+            user_id: "User " + req.session.user_id + " LogIn!"
+          });
+        }
+      });
       res.send("Welcome, User " + a.user_id + "<br/>" + "Name : " + a.user_name +
         "<br/>" + "UserId : " + a
         .user_id + "<br/>" + "UserPw : " + a.user_pw);
@@ -122,6 +157,24 @@ app.post("/deleteconfirm", function(req, res) {
       res.send("Data Deleted!");
     }
   })
+});
+
+app.post("/logout", function(req, res) {
+
+  console.log(req.session.user_id);
+  req.session.destroy(function(err) {
+    if (err) {
+      console.log(err);
+      throw (err);
+    }
+    res.send("Logout Successfully!");
+  });
+  io.on('connection', function(socket) {
+    socket.emit('session', {
+      user_id: "Welcome!"
+    });
+  });
+
 });
 
 app.post("/signinconfirm", function(req, res) {
